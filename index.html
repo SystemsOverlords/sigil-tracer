@@ -1,35 +1,36 @@
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Grounding Sigil Tracer</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sigil Tracer</title>
   <style>
-    html, body {
+    body {
       margin: 0;
       padding: 0;
-      background: #e7e4dc;
-      height: 100%;
       overflow: hidden;
-      touch-action: none;
+      background-color: #e7e4dc;
+      font-family: Arial, sans-serif;
     }
-    #container {
+    
+    #app {
       position: relative;
-      width: 100%;
-      height: 100%;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
-    #sigil {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      max-width: 80vw;
-      max-height: 80vh;
-      z-index: 0;
-      filter: brightness(0) opacity(1);
+    
+    #sigilContainer {
+      position: relative;
+      width: 80vmin;
+      height: 80vmin;
+      background-color: #f5f2ea;
+      border-radius: 4px;
     }
-    #drawLayer {
+    
+    #sigilSVG {
       position: absolute;
       top: 0;
       left: 0;
@@ -37,159 +38,273 @@
       height: 100%;
       z-index: 1;
     }
+    
+    #drawCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 3;
+      cursor: crosshair;
+      border-radius: 4px;
+    }
+    
+    #infoPanel {
+      position: fixed;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.6);
+      color: white;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 14px;
+      z-index: 10;
+    }
   </style>
 </head>
 <body>
-  <div id="container">
-    <img id="sigil" src="https://systemsoverlords.github.io/sigil-tracer/grounding-sigil.png" crossorigin="anonymous" alt="Grounding Sigil" />
-    <canvas id="drawLayer"></canvas>
+  <div id="app">
+    <div id="sigilContainer">
+      <div id="sigilSVG"></div>
+      <canvas id="drawCanvas"></canvas>
+    </div>
+    <div id="infoPanel">Initializing sigil tracer...</div>
   </div>
 
   <script>
-    const sigil = document.getElementById('sigil');
-    const canvas = document.getElementById('drawLayer');
-    const ctx = canvas.getContext('2d');
+    // Get references to DOM elements
+    const drawCanvas = document.getElementById('drawCanvas');
+    const sigilContainer = document.getElementById('sigilContainer');
+    const sigilSVG = document.getElementById('sigilSVG');
+    const infoPanel = document.getElementById('infoPanel');
     
-    const sampleCanvas = document.createElement('canvas');
-    const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
-    let sigilData;
-    let sigilBounds = { x: 0, y: 0, width: 0, height: 0 };
+    // Get canvas context
+    const ctx = drawCanvas.getContext('2d');
     
-    let width, height;
+    // Create a hidden canvas for pixel testing
+    const hiddenCanvas = document.createElement('canvas');
+    const hiddenCtx = hiddenCanvas.getContext('2d', { willReadFrequently: true });
     
-    function resize() {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
+    // Track state
+    let isDrawing = false;
+    let lastPoint = null;
+    let hue = 0;
+    let pixelData = null;
+    
+    // Define sigil data
+    const sigilSVGContent = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300" width="100%" height="100%">
+        <!-- Top bar -->
+        <rect x="70" y="20" width="60" height="10" fill="black" />
+        <!-- Vertical line from top -->
+        <rect x="95" y="30" width="10" height="60" fill="black" />
+        <!-- Outer circle -->
+        <circle cx="100" cy="130" r="40" stroke="black" stroke-width="10" fill="none" />
+        <!-- Inner circle -->
+        <circle cx="100" cy="130" r="20" stroke="black" stroke-width="10" fill="none" />
+        <!-- Bottom vertical line -->
+        <rect x="95" y="170" width="10" height="110" fill="black" />
+      </svg>
+    `;
+    
+    // Set up event listeners
+    function init() {
+      // Insert SVG
+      sigilSVG.innerHTML = sigilSVGContent;
       
-      if (sigil.complete) {
-        drawSampleMap();
-      }
+      // Set canvas size
+      resizeCanvas();
+      
+      // Setup event listeners
+      window.addEventListener('resize', resizeCanvas);
+      
+      // Mouse events
+      drawCanvas.addEventListener('mousedown', startDrawing);
+      drawCanvas.addEventListener('mousemove', draw);
+      window.addEventListener('mouseup', stopDrawing);
+      
+      // Touch events
+      drawCanvas.addEventListener('touchstart', handleTouch(startDrawing), { passive: false });
+      drawCanvas.addEventListener('touchmove', handleTouch(draw), { passive: false });
+      drawCanvas.addEventListener('touchend', stopDrawing);
+      drawCanvas.addEventListener('touchcancel', stopDrawing);
+      
+      // Start animation loop
+      requestAnimationFrame(fadeTrail);
+      
+      // Update info
+      infoPanel.textContent = "Ready - trace over the black lines";
+      
+      // Prepare hidden canvas
+      setTimeout(prepareSVGCanvas, 200);
     }
     
-    function drawSampleMap() {
-      const ratio = Math.min(
-        (width * 0.8) / sigil.naturalWidth, 
-        (height * 0.8) / sigil.naturalHeight
-      );
+    // Set up canvas size
+    function resizeCanvas() {
+      const containerWidth = sigilContainer.clientWidth;
+      const containerHeight = sigilContainer.clientHeight;
       
-      const sw = sigil.naturalWidth * ratio;
-      const sh = sigil.naturalHeight * ratio;
-      const sx = (width - sw) / 2;
-      const sy = (height - sh) / 2;
+      // Set canvas dimensions
+      drawCanvas.width = containerWidth;
+      drawCanvas.height = containerHeight;
       
-      sigilBounds = {
-        x: sx,
-        y: sy,
-        width: sw,
-        height: sh
+      // Set hidden canvas dimensions
+      hiddenCanvas.width = containerWidth;
+      hiddenCanvas.height = containerHeight;
+      
+      // Clear and prepare
+      ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+      
+      // Redraw hidden canvas
+      setTimeout(prepareSVGCanvas, 200);
+    }
+    
+    // Prepare the hidden canvas with SVG data
+    function prepareSVGCanvas() {
+      // Get the rendered SVG
+      const svgElement = sigilSVG.querySelector('svg');
+      
+      if (!svgElement) {
+        infoPanel.textContent = "Error: SVG not found. Try refreshing.";
+        return;
+      }
+      
+      // Create a data URL from the SVG
+      const svgData = new XMLSerializer().serializeToString(svgElement);
+      const svgBlob = new Blob([svgData], { type: 'image/svg+xml' });
+      const svgUrl = URL.createObjectURL(svgBlob);
+      
+      // Load the SVG as an image
+      const tempImage = new Image();
+      tempImage.onload = function() {
+        // Clear hidden canvas
+        hiddenCtx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+        
+        // Draw SVG to hidden canvas
+        hiddenCtx.drawImage(tempImage, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
+        
+        try {
+          // Get the pixel data
+          pixelData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height).data;
+          infoPanel.textContent = "Ready - trace over the black lines";
+        } catch (e) {
+          console.error("Error getting SVG data:", e);
+          infoPanel.textContent = "Error initializing - try refreshing";
+        }
+        
+        // Clean up
+        URL.revokeObjectURL(svgUrl);
       };
       
-      sampleCanvas.width = width;
-      sampleCanvas.height = height;
+      tempImage.onerror = function() {
+        console.error("Failed to load SVG as image");
+        infoPanel.textContent = "Error loading sigil - try refreshing";
+      };
       
-      sampleCtx.clearRect(0, 0, width, height);
-      sampleCtx.drawImage(sigil, sx, sy, sw, sh);
-      
-      sigilData = sampleCtx.getImageData(0, 0, width, height).data;
+      tempImage.src = svgUrl;
     }
     
-    function isBlack(x, y) {
-      if (!sigilData) return false;
+    // Check if a point is on a black part of the sigil
+    function isPointOnSigil(x, y) {
+      if (!pixelData) return false;
       
-      const i = (Math.floor(y) * width + Math.floor(x)) * 4;
+      // Get pixel index
+      const index = (Math.floor(y) * hiddenCanvas.width + Math.floor(x)) * 4;
       
-      if (i < 0 || i >= sigilData.length) return false;
+      // Check boundaries
+      if (index < 0 || index + 2 >= pixelData.length) return false;
       
-      const r = sigilData[i];
-      const g = sigilData[i + 1];
-      const b = sigilData[i + 2];
+      // Get RGB values
+      const r = pixelData[index];
+      const g = pixelData[index + 1];
+      const b = pixelData[index + 2];
       
-      return (r + g + b) / 3 < 100;
+      // Check if dark enough (black or near-black)
+      return (r + g + b) / 3 < 60;
     }
     
-    let drawing = false;
-    let lastX = 0;
-    let lastY = 0;
-    let hue = 0;
-    
-    function startDraw(e) {
-      e.preventDefault();
-      
-      const x = e.touches ? e.touches[0].clientX : e.clientX;
-      const y = e.touches ? e.touches[0].clientY : e.clientY;
-      
-      if (isBlack(x, y)) {
-        drawing = true;
-        lastX = x;
-        lastY = y;
+    // Touch event handler wrapper
+    function handleTouch(eventHandler) {
+      return function(e) {
+        e.preventDefault();
         
+        if (e.touches && e.touches.length > 0) {
+          const touch = e.touches[0];
+          const rect = drawCanvas.getBoundingClientRect();
+          const x = touch.clientX - rect.left;
+          const y = touch.clientY - rect.top;
+          
+          eventHandler({ offsetX: x, offsetY: y });
+        }
+      };
+    }
+    
+    // Start drawing
+    function startDrawing(e) {
+      const x = e.offsetX;
+      const y = e.offsetY;
+      
+      if (isPointOnSigil(x, y)) {
+        isDrawing = true;
+        lastPoint = { x, y };
+        
+        // Start a new path
         ctx.beginPath();
         ctx.moveTo(x, y);
       }
     }
     
-    function endDraw() {
-      drawing = false;
-      ctx.beginPath();
-    }
-    
+    // Draw line following the cursor/touch
     function draw(e) {
-      e.preventDefault();
+      if (!isDrawing || !lastPoint) return;
       
-      if (!drawing) return;
+      const x = e.offsetX;
+      const y = e.offsetY;
       
-      const x = e.touches ? e.touches[0].clientX : e.clientX;
-      const y = e.touches ? e.touches[0].clientY : e.clientY;
-      
-      if (isBlack(x, y)) {
-        ctx.strokeStyle = `hsl(${hue}, 100%, 60%)`;
-        ctx.lineWidth = 8;
+      if (isPointOnSigil(x, y)) {
+        // Set line style with rainbow effect
+        ctx.strokeStyle = `hsl(${hue}, 100%, 50%)`;
+        ctx.lineWidth = 10;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         
+        // Draw line
         ctx.lineTo(x, y);
         ctx.stroke();
+        
+        // Update for next draw
         ctx.beginPath();
         ctx.moveTo(x, y);
+        lastPoint = { x, y };
         
-        lastX = x;
-        lastY = y;
-        
+        // Cycle hue for rainbow effect
         hue = (hue + 2) % 360;
       } else {
-        drawing = false;
-        ctx.beginPath();
+        // Stop drawing if moved outside sigil
+        stopDrawing();
       }
     }
     
+    // Stop drawing
+    function stopDrawing() {
+      isDrawing = false;
+      lastPoint = null;
+      ctx.beginPath();
+    }
+    
+    // Fade the trail over time
     function fadeTrail() {
-      ctx.fillStyle = 'rgba(231, 228, 220, 0.05)';
-      ctx.fillRect(0, 0, width, height);
+      // Apply transparency to create fade
+      ctx.fillStyle = 'rgba(231, 228, 220, 0.04)';
+      ctx.fillRect(0, 0, drawCanvas.width, drawCanvas.height);
       
+      // Continue animation
       requestAnimationFrame(fadeTrail);
     }
     
-    window.addEventListener('resize', resize);
-    
-    canvas.addEventListener('mousedown', startDraw);
-    canvas.addEventListener('touchstart', startDraw);
-    canvas.addEventListener('mousemove', draw);
-    canvas.addEventListener('touchmove', draw);
-    window.addEventListener('mouseup', endDraw);
-    window.addEventListener('touchend', endDraw);
-    
-    canvas.style.touchAction = 'none';
-    
-    sigil.onload = () => {
-      resize();
-      fadeTrail();
-    };
-    
-    if (sigil.complete) {
-      resize();
-      fadeTrail();
-    }
+    // Initialize the app
+    init();
   </script>
 </body>
 </html>
-```
