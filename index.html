@@ -1,351 +1,122 @@
-<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html><html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sigil Tracer</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sigil Tracer – Base64 Locked</title>
   <style>
-    body {
+    html, body {
       margin: 0;
       padding: 0;
+      background: #e7e4dc;
+      height: 100%;
       overflow: hidden;
-      background-color: #e7e4dc;
-      font-family: Arial, sans-serif;
+      touch-action: none;
     }
-    
-    #app {
-      position: relative;
-      width: 100vw;
-      height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
+    #sigil {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      max-width: 80vw;
+      max-height: 80vh;
+      z-index: 0;
     }
-    
-    #sigilContainer {
-      position: relative;
-      width: 80vmin;
-      height: 80vmin;
-      background-color: #f5f2ea;
-      border-radius: 4px;
-    }
-    
-    #drawCanvas {
+    #tracer {
       position: absolute;
       top: 0;
       left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 3;
-      cursor: crosshair;
-      border-radius: 4px;
-    }
-    
-    #fallbackSigil {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
       z-index: 1;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-    
-    #infoPanel {
-      position: fixed;
-      bottom: 10px;
-      left: 10px;
-      background: rgba(0, 0, 0, 0.6);
-      color: white;
-      padding: 8px;
-      border-radius: 4px;
-      font-size: 14px;
-      z-index: 10;
-    }
-    
-    #loadingMessage {
-      text-align: center;
-      color: #555;
+      pointer-events: none;
     }
   </style>
 </head>
 <body>
-  <div id="app">
-    <div id="sigilContainer">
-      <div id="fallbackSigil">
-        <div id="loadingMessage">Loading sigil...</div>
-      </div>
-      <canvas id="drawCanvas"></canvas>
-    </div>
-    <div id="infoPanel">Initializing sigil tracer...</div>
-  </div>
+  <!-- Static sigil background (Base64 embedded) -->
+  <img id="sigil" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABAAAAAQACAYAAAB/HSuDAAABCGlDQ1BJQ0MgUHJvZmlsZQAAeJxjYG" crossorigin="anonymous" alt="Sigil" />  <!-- Drawing canvas overlay --><canvas id="tracer"></canvas>
 
   <script>
-    // Get references to DOM elements
-    const drawCanvas = document.getElementById('drawCanvas');
-    const sigilContainer = document.getElementById('sigilContainer');
-    const infoPanel = document.getElementById('infoPanel');
-    const fallbackSigil = document.getElementById('fallbackSigil');
-    const loadingMessage = document.getElementById('loadingMessage');
-    
-    // Get canvas context
-    const ctx = drawCanvas.getContext('2d');
-    
-    // Create a hidden canvas for pixel testing
-    const hiddenCanvas = document.createElement('canvas');
-    const hiddenCtx = hiddenCanvas.getContext('2d', { willReadFrequently: true });
-    
-    // Track state
-    let isDrawing = false;
-    let isImageLoaded = false;
-    let lastPoint = null;
+    const sigil = document.getElementById('sigil');
+    const canvas = document.getElementById('tracer');
+    const ctx = canvas.getContext('2d');
+    const sample = document.createElement('canvas');
+    const sctx = sample.getContext('2d');
+
+    let width, height, sigilData;
+    let drawing = false;
     let hue = 0;
-    let pixelData = null;
-    
-    // Define sigil data
-    // Create SVG sigil if the image fails to load
-    const fallbackSigilSVG = `
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300" width="100%" height="100%">
-        <!-- Top bar -->
-        <rect x="70" y="20" width="60" height="10" fill="black" />
-        <!-- Vertical line from top -->
-        <rect x="95" y="30" width="10" height="60" fill="black" />
-        <!-- Outer circle -->
-        <circle cx="100" cy="130" r="40" stroke="black" stroke-width="10" fill="none" />
-        <!-- Inner circle -->
-        <circle cx="100" cy="130" r="20" stroke="black" stroke-width="10" fill="none" />
-        <!-- Bottom vertical line -->
-        <rect x="95" y="170" width="10" height="110" fill="black" />
-      </svg>
-    `;
-    
-    // Create a new image and set source
-    const sigilImage = new Image();
-    sigilImage.crossOrigin = "Anonymous";
-    sigilImage.src = 'https://systemsoverlords.github.io/sigil-tracer/grounding-sigil.png';
-    
-    // Set up event listeners
-    function init() {
-      // Set canvas size
-      resizeCanvas();
-      
-      // Setup event listeners
-      window.addEventListener('resize', resizeCanvas);
-      
-      // Mouse events
-      drawCanvas.addEventListener('mousedown', startDrawing);
-      drawCanvas.addEventListener('mousemove', draw);
-      window.addEventListener('mouseup', stopDrawing);
-      
-      // Touch events
-      drawCanvas.addEventListener('touchstart', handleTouch(startDrawing), { passive: false });
-      drawCanvas.addEventListener('touchmove', handleTouch(draw), { passive: false });
-      drawCanvas.addEventListener('touchend', stopDrawing);
-      drawCanvas.addEventListener('touchcancel', stopDrawing);
-      
-      // Start animation loop
-      requestAnimationFrame(fadeTrail);
+
+    function resize() {
+      width = canvas.width = sample.width = window.innerWidth;
+      height = canvas.height = sample.height = window.innerHeight;
     }
-    
-    // Handle image loading
-    sigilImage.onload = function() {
-      isImageLoaded = true;
-      infoPanel.textContent = "Ready - trace over the black lines";
-      loadingMessage.style.display = "none";
-      prepareHiddenCanvas();
-    };
-    
-    // Handle image loading errors
-    sigilImage.onerror = function() {
-      console.error("Failed to load sigil image");
-      infoPanel.textContent = "Using fallback sigil - trace over the black lines";
-      loadingMessage.style.display = "none";
-      
-      // Use the SVG fallback
-      fallbackSigil.innerHTML = fallbackSigilSVG;
-      
-      // Prepare the hidden canvas with the SVG
-      setTimeout(() => {
-        prepareFallbackCanvas();
-      }, 100);
-    };
-    
-    // Set up canvas size
-    function resizeCanvas() {
-      const containerWidth = sigilContainer.clientWidth;
-      const containerHeight = sigilContainer.clientHeight;
-      
-      // Set canvas dimensions
-      drawCanvas.width = containerWidth;
-      drawCanvas.height = containerHeight;
-      
-      // Set hidden canvas dimensions
-      hiddenCanvas.width = containerWidth;
-      hiddenCanvas.height = containerHeight;
-      
-      // Clear and prepare
-      ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
-      
-      // Redraw hidden canvas if image is loaded
-      if (isImageLoaded) {
-        prepareHiddenCanvas();
-      } else if (fallbackSigil.innerHTML.includes('svg')) {
-        prepareFallbackCanvas();
-      }
+
+    function sampleSigil() {
+      const ratio = Math.min(
+        (width * 0.8) / sigil.naturalWidth,
+        (height * 0.8) / sigil.naturalHeight
+      );
+      const sw = sigil.naturalWidth * ratio;
+      const sh = sigil.naturalHeight * ratio;
+      const sx = (width - sw) / 2;
+      const sy = (height - sh) / 2;
+      sctx.clearRect(0, 0, width, height);
+      sctx.drawImage(sigil, sx, sy, sw, sh);
+      sigilData = sctx.getImageData(0, 0, width, height).data;
     }
-    
-    // Prepare the hidden canvas with the image data
-    function prepareHiddenCanvas() {
-      // Clear hidden canvas
-      hiddenCtx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
-      
-      // Draw the image to hidden canvas
-      hiddenCtx.drawImage(sigilImage, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
-      
-      try {
-        // Get the pixel data
-        pixelData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height).data;
-        isImageLoaded = true;
-      } catch (e) {
-        console.error("Error getting image data:", e);
-        prepareFallbackCanvas();
-      }
+
+    function isBlack(x, y) {
+      const i = (Math.floor(y) * width + Math.floor(x)) * 4;
+      const r = sigilData[i], g = sigilData[i+1], b = sigilData[i+2];
+      return ((r + g + b) / 3) < 50;
     }
-    
-    // Prepare fallback canvas with SVG data
-    function prepareFallbackCanvas() {
-      // Create a temporary image from SVG
-      const svgBlob = new Blob([fallbackSigilSVG], { type: 'image/svg+xml' });
-      const svgUrl = URL.createObjectURL(svgBlob);
-      
-      const tempImage = new Image();
-      tempImage.onload = function() {
-        // Clear hidden canvas
-        hiddenCtx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
-        
-        // Draw SVG to hidden canvas
-        hiddenCtx.drawImage(tempImage, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
-        
-        try {
-          // Get the pixel data
-          pixelData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height).data;
-          isImageLoaded = true;
-        } catch (e) {
-          console.error("Error getting fallback image data:", e);
-          infoPanel.textContent = "Error initializing - try refreshing";
-        }
-        
-        // Clean up
-        URL.revokeObjectURL(svgUrl);
-      };
-      
-      tempImage.src = svgUrl;
+
+    function start(e) {
+      drawing = true;
+      draw(e);
     }
-    
-    // Check if a point is on a black part of the sigil
-    function isPointOnSigil(x, y) {
-      if (!pixelData) return false;
-      
-      // Get pixel index
-      const index = (Math.floor(y) * hiddenCanvas.width + Math.floor(x)) * 4;
-      
-      // Check boundaries
-      if (index < 0 || index + 2 >= pixelData.length) return false;
-      
-      // Get RGB values
-      const r = pixelData[index];
-      const g = pixelData[index + 1];
-      const b = pixelData[index + 2];
-      
-      // Check if dark enough (black or near-black)
-      return (r + g + b) / 3 < 60;
-    }
-    
-    // Touch event handler wrapper
-    function handleTouch(eventHandler) {
-      return function(e) {
-        e.preventDefault();
-        
-        if (e.touches && e.touches.length > 0) {
-          const touch = e.touches[0];
-          const rect = drawCanvas.getBoundingClientRect();
-          const x = touch.clientX - rect.left;
-          const y = touch.clientY - rect.top;
-          
-          eventHandler({ offsetX: x, offsetY: y });
-        }
-      };
-    }
-    
-    // Start drawing
-    function startDrawing(e) {
-      if (!isImageLoaded) return;
-      
-      const x = e.offsetX;
-      const y = e.offsetY;
-      
-      if (isPointOnSigil(x, y)) {
-        isDrawing = true;
-        lastPoint = { x, y };
-        
-        // Start a new path
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-      }
-    }
-    
-    // Draw line following the cursor/touch
-    function draw(e) {
-      if (!isDrawing || !isImageLoaded || !lastPoint) return;
-      
-      const x = e.offsetX;
-      const y = e.offsetY;
-      
-      if (isPointOnSigil(x, y)) {
-        // Set line style with rainbow effect
-        ctx.strokeStyle = `hsl(${hue}, 100%, 50%)`;
-        ctx.lineWidth = 10;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        
-        // Draw line
-        ctx.lineTo(x, y);
-        ctx.stroke();
-        
-        // Update for next draw
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        lastPoint = { x, y };
-        
-        // Cycle hue for rainbow effect
-        hue = (hue + 2) % 360;
-      } else {
-        // Stop drawing if moved outside sigil
-        stopDrawing();
-      }
-    }
-    
-    // Stop drawing
-    function stopDrawing() {
-      isDrawing = false;
-      lastPoint = null;
+
+    function stop() {
+      drawing = false;
       ctx.beginPath();
     }
-    
-    // Fade the trail over time
+
+    function draw(e) {
+      if (!drawing || !sigilData) return;
+      const x = e.touches ? e.touches[0].clientX : e.clientX;
+      const y = e.touches ? e.touches[0].clientY : e.clientY;
+      if (!isBlack(x, y)) return;
+      ctx.strokeStyle = `hsl(${hue}, 100%, 60%)`;
+      ctx.lineWidth = 8;
+      ctx.lineCap = 'round';
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      hue = (hue + 1) % 360;
+    }
+
     function fadeTrail() {
-      // Apply transparency to create fade
-      ctx.fillStyle = 'rgba(231, 228, 220, 0.04)';
-      ctx.fillRect(0, 0, drawCanvas.width, drawCanvas.height);
-      
-      // Continue animation
+      ctx.fillStyle = 'rgba(231, 228, 220, 0.1)';
+      ctx.fillRect(0, 0, width, height);
       requestAnimationFrame(fadeTrail);
     }
-    
-    // Initialize the app
-    init();
-  </script>
-</body>
+
+    sigil.onload = () => {
+      resize();
+      sampleSigil();
+      fadeTrail();
+    };
+
+    window.addEventListener('resize', () => {
+      resize();
+      if (sigil.complete) sampleSigil();
+    });
+
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('touchstart', start);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('touchmove', draw);
+    canvas.addEventListener('mouseup', stop);
+    canvas.addEventListener('touchend', stop);
+  </script></body>
 </html>
