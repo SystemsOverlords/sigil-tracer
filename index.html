@@ -1,7 +1,8 @@
-<!DOCTYPE html><html lang="en">
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Grounding Sigil Tracer</title>
   <style>
     html, body {
@@ -32,46 +33,53 @@
   </style>
 </head>
 <body>
-  <!-- Visible sigil image -->
-  <img id="sigil" src="grounding-sigil.png" alt="Grounding Sigil" crossorigin="anonymous" />
+  <!-- Visible grounding sigil -->
+  <img
+    id="sigil"
+    src="https://systemsoverlords.github.io/sigil-tracer/grounding-sigil.png"
+    alt="Grounding Sigil"
+    crossorigin="anonymous"
+  />
+
   <!-- Canvas for fading trails -->
   <canvas id="fadeLayer"></canvas>
   <!-- Canvas for active drawing -->
-  <canvas id="drawLayer"></canvas>  <script>
-    const sigilImg = document.getElementById('sigil');
-    const fadeCanvas = document.getElementById('fadeLayer');
-    const drawCanvas = document.getElementById('drawLayer');
-    const fadeCtx = fadeCanvas.getContext('2d');
-    const drawCtx = drawCanvas.getContext('2d');
+  <canvas id="drawLayer"></canvas>
 
-    let width, height;
+  <script>
+    const sigilImg    = document.getElementById('sigil');
+    const fadeCanvas  = document.getElementById('fadeLayer');
+    const drawCanvas  = document.getElementById('drawLayer');
+    const fadeCtx     = fadeCanvas.getContext('2d');
+    const drawCtx     = drawCanvas.getContext('2d');
+
+    let width, height, sigilData;
+    const sampleCanvas = document.createElement('canvas');
+    const sampleCtx    = sampleCanvas.getContext('2d');
+
     function resize() {
       width = fadeCanvas.width = drawCanvas.width = window.innerWidth;
       height = fadeCanvas.height = drawCanvas.height = window.innerHeight;
-      // redraw sampling canvas when resized
-      if (sampleCtx) drawSample();
+      sampleCanvas.width  = width;
+      sampleCanvas.height = height;
+      if (sigilImg.complete) drawSample();
     }
     window.addEventListener('resize', resize);
     resize();
 
-    // Offscreen canvas for image sampling
-    const sampleCanvas = document.createElement('canvas');
-    const sampleCtx = sampleCanvas.getContext('2d');
-    sampleCanvas.width = width;
-    sampleCanvas.height = height;
-    let sigilData;
-
-    // Draw sigil onto sample canvas and capture pixel data
+    // Draw the sigil into off-screen canvas and capture pixel data
     function drawSample() {
-      sampleCtx.clearRect(0, 0, width, height);
-      // calculate sigil positioning
-      const ratio = Math.min(width * 0.8 / sigilImg.naturalWidth, height * 0.8 / sigilImg.naturalHeight);
+      sampleCtx.clearRect(0,0,width,height);
+      const ratio = Math.min(
+        (width*0.8)/sigilImg.naturalWidth,
+        (height*0.8)/sigilImg.naturalHeight
+      );
       const sw = sigilImg.naturalWidth * ratio;
       const sh = sigilImg.naturalHeight * ratio;
       const sx = (width - sw) / 2;
       const sy = (height - sh) / 2;
       sampleCtx.drawImage(sigilImg, sx, sy, sw, sh);
-      sigilData = sampleCtx.getImageData(0, 0, width, height).data;
+      sigilData = sampleCtx.getImageData(0,0,width,height).data;
     }
 
     sigilImg.onload = () => {
@@ -81,15 +89,12 @@
 
     function isBlack(x, y) {
       if (!sigilData) return false;
-      const i = (Math.floor(y) * width + Math.floor(x)) * 4;
+      const i = (Math.floor(y)*width + Math.floor(x)) * 4;
       const r = sigilData[i], g = sigilData[i+1], b = sigilData[i+2];
-      // brightness threshold
-      return (r + g + b) / 3 < 50;
+      return ((r+g+b)/3) < 50;
     }
 
-    let drawing = false;
-    let hue = 0;
-
+    let drawing = false, hue = 0;
     function startDraw(e) {
       drawing = true;
       draw(e);
@@ -98,16 +103,14 @@
       drawing = false;
       drawCtx.beginPath();
     }
-
     function draw(e) {
       if (!drawing) return;
       const x = e.touches ? e.touches[0].clientX : e.clientX;
       const y = e.touches ? e.touches[0].clientY : e.clientY;
       if (!isBlack(x, y)) return;
-
       drawCtx.strokeStyle = `hsl(${hue},100%,60%)`;
-      drawCtx.lineWidth = 10;
-      drawCtx.lineCap = 'round';
+      drawCtx.lineWidth   = 10;
+      drawCtx.lineCap     = 'round';
       drawCtx.lineTo(x, y);
       drawCtx.stroke();
       drawCtx.beginPath();
@@ -122,16 +125,13 @@
     drawCanvas.addEventListener('mouseup', endDraw);
     drawCanvas.addEventListener('touchend', endDraw);
 
-    // Fade and composite loop
     function fadeLoop() {
-      // fade existing trails
       fadeCtx.fillStyle = 'rgba(231,228,220,0.2)';
-      fadeCtx.fillRect(0, 0, width, height);
-      // draw new strokes onto fade layer
-      fadeCtx.drawImage(drawCanvas, 0, 0);
-      // clear draw layer
-      drawCtx.clearRect(0, 0, width, height);
+      fadeCtx.fillRect(0,0,width,height);
+      fadeCtx.drawImage(drawCanvas, 0,0);
+      drawCtx.clearRect(0,0,width,height);
       requestAnimationFrame(fadeLoop);
     }
-  </script></body>
+  </script>
+</body>
 </html>
