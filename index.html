@@ -2,12 +2,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sigil Tracer – Base64 Locked</title>
+  <title>Sigil Tracer – Clean Rebuild</title>
   <style>
     html, body {
       margin: 0;
       padding: 0;
       background: #e7e4dc;
+      width: 100%;
       height: 100%;
       overflow: hidden;
       touch-action: none;
@@ -21,7 +22,7 @@
       max-height: 80vh;
       z-index: 0;
     }
-    #tracer {
+    #canvas {
       position: absolute;
       top: 0;
       left: 0;
@@ -31,19 +32,18 @@
   </style>
 </head>
 <body>
-  <!-- Static sigil background (Base64 embedded) -->
-  <img id="sigil" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABAAAAAQACAYAAAB/HSuDAAABCGlDQ1BJQ0MgUHJvZmlsZQAAeJxjYG" crossorigin="anonymous" alt="Sigil" />  <!-- Drawing canvas overlay --><canvas id="tracer"></canvas>
+  <!-- Static background sigil -->
+  <img id="sigil" alt="Sigil" crossorigin="anonymous"
+       src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABAAAAAQACAYAAAB/HSuDAAABCGlDQ1BJQ0MgUHJvZmlsZQAAeJxjYGA8wQAELAYMDLl5JUVB7k4KEZFRCuwPGBiBEAwSk4sL" />  <!-- Canvas for drawing --><canvas id="canvas"></canvas>
 
   <script>
-    const sigil = document.getElementById('sigil');
-    const canvas = document.getElementById('tracer');
+    const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
+    const sigil = document.getElementById('sigil');
     const sample = document.createElement('canvas');
     const sctx = sample.getContext('2d');
 
     let width, height, sigilData;
-    let drawing = false;
-    let hue = 0;
 
     function resize() {
       width = canvas.width = sample.width = window.innerWidth;
@@ -59,6 +59,7 @@
       const sh = sigil.naturalHeight * ratio;
       const sx = (width - sw) / 2;
       const sy = (height - sh) / 2;
+
       sctx.clearRect(0, 0, width, height);
       sctx.drawImage(sigil, sx, sy, sw, sh);
       sigilData = sctx.getImageData(0, 0, width, height).data;
@@ -66,9 +67,12 @@
 
     function isBlack(x, y) {
       const i = (Math.floor(y) * width + Math.floor(x)) * 4;
-      const r = sigilData[i], g = sigilData[i+1], b = sigilData[i+2];
+      const r = sigilData[i], g = sigilData[i + 1], b = sigilData[i + 2];
       return ((r + g + b) / 3) < 50;
     }
+
+    let hue = 0;
+    let drawing = false;
 
     function start(e) {
       drawing = true;
@@ -85,6 +89,7 @@
       const x = e.touches ? e.touches[0].clientX : e.clientX;
       const y = e.touches ? e.touches[0].clientY : e.clientY;
       if (!isBlack(x, y)) return;
+
       ctx.strokeStyle = `hsl(${hue}, 100%, 60%)`;
       ctx.lineWidth = 8;
       ctx.lineCap = 'round';
@@ -92,6 +97,7 @@
       ctx.stroke();
       ctx.beginPath();
       ctx.moveTo(x, y);
+
       hue = (hue + 1) % 360;
     }
 
