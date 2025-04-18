@@ -30,15 +30,6 @@
       border-radius: 4px;
     }
     
-    #sigilSVG {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 1;
-    }
-    
     #drawCanvas {
       position: absolute;
       top: 0;
@@ -48,6 +39,18 @@
       z-index: 3;
       cursor: crosshair;
       border-radius: 4px;
+    }
+    
+    #fallbackSigil {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
     
     #infoPanel {
@@ -61,12 +64,19 @@
       font-size: 14px;
       z-index: 10;
     }
+    
+    #loadingMessage {
+      text-align: center;
+      color: #555;
+    }
   </style>
 </head>
 <body>
   <div id="app">
     <div id="sigilContainer">
-      <div id="sigilSVG"></div>
+      <div id="fallbackSigil">
+        <div id="loadingMessage">Loading sigil...</div>
+      </div>
       <canvas id="drawCanvas"></canvas>
     </div>
     <div id="infoPanel">Initializing sigil tracer...</div>
@@ -76,8 +86,9 @@
     // Get references to DOM elements
     const drawCanvas = document.getElementById('drawCanvas');
     const sigilContainer = document.getElementById('sigilContainer');
-    const sigilSVG = document.getElementById('sigilSVG');
     const infoPanel = document.getElementById('infoPanel');
+    const fallbackSigil = document.getElementById('fallbackSigil');
+    const loadingMessage = document.getElementById('loadingMessage');
     
     // Get canvas context
     const ctx = drawCanvas.getContext('2d');
@@ -88,12 +99,14 @@
     
     // Track state
     let isDrawing = false;
+    let isImageLoaded = false;
     let lastPoint = null;
     let hue = 0;
     let pixelData = null;
     
     // Define sigil data
-    const sigilSVGContent = `
+    // Create SVG sigil if the image fails to load
+    const fallbackSigilSVG = `
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300" width="100%" height="100%">
         <!-- Top bar -->
         <rect x="70" y="20" width="60" height="10" fill="black" />
@@ -108,11 +121,13 @@
       </svg>
     `;
     
+    // Create a new image and set source
+    const sigilImage = new Image();
+    sigilImage.crossOrigin = "Anonymous";
+    sigilImage.src = 'https://systemsoverlords.github.io/sigil-tracer/grounding-sigil.png';
+    
     // Set up event listeners
     function init() {
-      // Insert SVG
-      sigilSVG.innerHTML = sigilSVGContent;
-      
       // Set canvas size
       resizeCanvas();
       
@@ -132,13 +147,30 @@
       
       // Start animation loop
       requestAnimationFrame(fadeTrail);
-      
-      // Update info
-      infoPanel.textContent = "Ready - trace over the black lines";
-      
-      // Prepare hidden canvas
-      setTimeout(prepareSVGCanvas, 200);
     }
+    
+    // Handle image loading
+    sigilImage.onload = function() {
+      isImageLoaded = true;
+      infoPanel.textContent = "Ready - trace over the black lines";
+      loadingMessage.style.display = "none";
+      prepareHiddenCanvas();
+    };
+    
+    // Handle image loading errors
+    sigilImage.onerror = function() {
+      console.error("Failed to load sigil image");
+      infoPanel.textContent = "Using fallback sigil - trace over the black lines";
+      loadingMessage.style.display = "none";
+      
+      // Use the SVG fallback
+      fallbackSigil.innerHTML = fallbackSigilSVG;
+      
+      // Prepare the hidden canvas with the SVG
+      setTimeout(() => {
+        prepareFallbackCanvas();
+      }, 100);
+    };
     
     // Set up canvas size
     function resizeCanvas() {
@@ -156,26 +188,38 @@
       // Clear and prepare
       ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
       
-      // Redraw hidden canvas
-      setTimeout(prepareSVGCanvas, 200);
+      // Redraw hidden canvas if image is loaded
+      if (isImageLoaded) {
+        prepareHiddenCanvas();
+      } else if (fallbackSigil.innerHTML.includes('svg')) {
+        prepareFallbackCanvas();
+      }
     }
     
-    // Prepare the hidden canvas with SVG data
-    function prepareSVGCanvas() {
-      // Get the rendered SVG
-      const svgElement = sigilSVG.querySelector('svg');
+    // Prepare the hidden canvas with the image data
+    function prepareHiddenCanvas() {
+      // Clear hidden canvas
+      hiddenCtx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
       
-      if (!svgElement) {
-        infoPanel.textContent = "Error: SVG not found. Try refreshing.";
-        return;
+      // Draw the image to hidden canvas
+      hiddenCtx.drawImage(sigilImage, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
+      
+      try {
+        // Get the pixel data
+        pixelData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height).data;
+        isImageLoaded = true;
+      } catch (e) {
+        console.error("Error getting image data:", e);
+        prepareFallbackCanvas();
       }
-      
-      // Create a data URL from the SVG
-      const svgData = new XMLSerializer().serializeToString(svgElement);
-      const svgBlob = new Blob([svgData], { type: 'image/svg+xml' });
+    }
+    
+    // Prepare fallback canvas with SVG data
+    function prepareFallbackCanvas() {
+      // Create a temporary image from SVG
+      const svgBlob = new Blob([fallbackSigilSVG], { type: 'image/svg+xml' });
       const svgUrl = URL.createObjectURL(svgBlob);
       
-      // Load the SVG as an image
       const tempImage = new Image();
       tempImage.onload = function() {
         // Clear hidden canvas
@@ -187,19 +231,14 @@
         try {
           // Get the pixel data
           pixelData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height).data;
-          infoPanel.textContent = "Ready - trace over the black lines";
+          isImageLoaded = true;
         } catch (e) {
-          console.error("Error getting SVG data:", e);
+          console.error("Error getting fallback image data:", e);
           infoPanel.textContent = "Error initializing - try refreshing";
         }
         
         // Clean up
         URL.revokeObjectURL(svgUrl);
-      };
-      
-      tempImage.onerror = function() {
-        console.error("Failed to load SVG as image");
-        infoPanel.textContent = "Error loading sigil - try refreshing";
       };
       
       tempImage.src = svgUrl;
@@ -242,6 +281,8 @@
     
     // Start drawing
     function startDrawing(e) {
+      if (!isImageLoaded) return;
+      
       const x = e.offsetX;
       const y = e.offsetY;
       
@@ -257,7 +298,7 @@
     
     // Draw line following the cursor/touch
     function draw(e) {
-      if (!isDrawing || !lastPoint) return;
+      if (!isDrawing || !isImageLoaded || !lastPoint) return;
       
       const x = e.offsetX;
       const y = e.offsetY;
