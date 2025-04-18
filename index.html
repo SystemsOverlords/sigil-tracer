@@ -1,9 +1,10 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Line-Locked Sigil Tracer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grounding Sigil Tracer</title>
   <style>
     html, body {
       margin: 0;
@@ -13,6 +14,11 @@
       overflow: hidden;
       touch-action: none;
     }
+    #container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
     #sigil {
       position: absolute;
       top: 50%;
@@ -21,113 +27,169 @@
       max-width: 80vw;
       max-height: 80vh;
       z-index: 0;
+      filter: brightness(0) opacity(1);
     }
-    #tracer {
+    #drawLayer {
       position: absolute;
       top: 0;
       left: 0;
+      width: 100%;
+      height: 100%;
       z-index: 1;
-      pointer-events: none;
     }
   </style>
 </head>
 <body>
-  <!-- Permanent background sigil -->
-  <img id="sigil" src="https://systemsoverlords.github.io/sigil-tracer/grounding-sigil.png" crossorigin="anonymous" alt="Sigil" />
-
-  <!-- Overlay for drawing -->
-  <canvas id="tracer"></canvas>
+  <div id="container">
+    <img id="sigil" src="https://systemsoverlords.github.io/sigil-tracer/grounding-sigil.png" crossorigin="anonymous" alt="Grounding Sigil" />
+    <canvas id="drawLayer"></canvas>
+  </div>
 
   <script>
-    const sigilImg = document.getElementById('sigil');
-    const canvas = document.getElementById('tracer');
+    const sigil = document.getElementById('sigil');
+    const canvas = document.getElementById('drawLayer');
     const ctx = canvas.getContext('2d');
-
-    const sampler = document.createElement('canvas');
-    const sctx = sampler.getContext('2d');
-
-    let width, height, sigilData;
+    
+    const sampleCanvas = document.createElement('canvas');
+    const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+    let sigilData;
+    let sigilBounds = { x: 0, y: 0, width: 0, height: 0 };
+    
+    let width, height;
+    
     function resize() {
-      width = canvas.width = sampler.width = window.innerWidth;
-      height = canvas.height = sampler.height = window.innerHeight;
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      
+      if (sigil.complete) {
+        drawSampleMap();
+      }
     }
-
-    function sampleSigil() {
+    
+    function drawSampleMap() {
       const ratio = Math.min(
-        (width * 0.8) / sigilImg.naturalWidth,
-        (height * 0.8) / sigilImg.naturalHeight
+        (width * 0.8) / sigil.naturalWidth, 
+        (height * 0.8) / sigil.naturalHeight
       );
-      const sw = sigilImg.naturalWidth * ratio;
-      const sh = sigilImg.naturalHeight * ratio;
+      
+      const sw = sigil.naturalWidth * ratio;
+      const sh = sigil.naturalHeight * ratio;
       const sx = (width - sw) / 2;
       const sy = (height - sh) / 2;
-
-      sctx.clearRect(0, 0, width, height);
-      sctx.drawImage(sigilImg, sx, sy, sw, sh);
-      sigilData = sctx.getImageData(0, 0, width, height).data;
+      
+      sigilBounds = {
+        x: sx,
+        y: sy,
+        width: sw,
+        height: sh
+      };
+      
+      sampleCanvas.width = width;
+      sampleCanvas.height = height;
+      
+      sampleCtx.clearRect(0, 0, width, height);
+      sampleCtx.drawImage(sigil, sx, sy, sw, sh);
+      
+      sigilData = sampleCtx.getImageData(0, 0, width, height).data;
     }
-
+    
     function isBlack(x, y) {
+      if (!sigilData) return false;
+      
       const i = (Math.floor(y) * width + Math.floor(x)) * 4;
-      const r = sigilData[i], g = sigilData[i+1], b = sigilData[i+2];
-      return ((r + g + b) / 3) < 50;
+      
+      if (i < 0 || i >= sigilData.length) return false;
+      
+      const r = sigilData[i];
+      const g = sigilData[i + 1];
+      const b = sigilData[i + 2];
+      
+      return (r + g + b) / 3 < 100;
     }
-
-    let hue = 0;
+    
     let drawing = false;
-
-    function start(e) {
-      drawing = true;
-      draw(e);
+    let lastX = 0;
+    let lastY = 0;
+    let hue = 0;
+    
+    function startDraw(e) {
+      e.preventDefault();
+      
+      const x = e.touches ? e.touches[0].clientX : e.clientX;
+      const y = e.touches ? e.touches[0].clientY : e.clientY;
+      
+      if (isBlack(x, y)) {
+        drawing = true;
+        lastX = x;
+        lastY = y;
+        
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+      }
     }
-
-    function stop() {
+    
+    function endDraw() {
       drawing = false;
       ctx.beginPath();
     }
-
+    
     function draw(e) {
-      if (!drawing || !sigilData) return;
+      e.preventDefault();
+      
+      if (!drawing) return;
+      
       const x = e.touches ? e.touches[0].clientX : e.clientX;
       const y = e.touches ? e.touches[0].clientY : e.clientY;
-
-      if (!isBlack(x, y)) return;
-
-      ctx.strokeStyle = `hsl(${hue}, 100%, 60%)`;
-      ctx.lineWidth = 8;
-      ctx.lineCap = 'round';
-
-      ctx.lineTo(x, y);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-
-      hue = (hue + 1) % 360;
+      
+      if (isBlack(x, y)) {
+        ctx.strokeStyle = `hsl(${hue}, 100%, 60%)`;
+        ctx.lineWidth = 8;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        
+        lastX = x;
+        lastY = y;
+        
+        hue = (hue + 2) % 360;
+      } else {
+        drawing = false;
+        ctx.beginPath();
+      }
     }
-
-    function fade() {
-      ctx.fillStyle = 'rgba(231, 228, 220, 0.1)';
+    
+    function fadeTrail() {
+      ctx.fillStyle = 'rgba(231, 228, 220, 0.05)';
       ctx.fillRect(0, 0, width, height);
-      requestAnimationFrame(fade);
+      
+      requestAnimationFrame(fadeTrail);
     }
-
-    sigilImg.onload = () => {
-      resize();
-      sampleSigil();
-      fade();
-    };
-
-    window.addEventListener('resize', () => {
-      resize();
-      if (sigilImg.complete) sampleSigil();
-    });
-
-    canvas.addEventListener('mousedown', start);
+    
+    window.addEventListener('resize', resize);
+    
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('touchstart', startDraw);
     canvas.addEventListener('mousemove', draw);
-    canvas.addEventListener('mouseup', stop);
-    canvas.addEventListener('touchstart', start);
     canvas.addEventListener('touchmove', draw);
-    canvas.addEventListener('touchend', stop);
+    window.addEventListener('mouseup', endDraw);
+    window.addEventListener('touchend', endDraw);
+    
+    canvas.style.touchAction = 'none';
+    
+    sigil.onload = () => {
+      resize();
+      fadeTrail();
+    };
+    
+    if (sigil.complete) {
+      resize();
+      fadeTrail();
+    }
   </script>
 </body>
 </html>
+```
