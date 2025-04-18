@@ -1,8 +1,9 @@
-<!DOCTYPE html><html lang="en">
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Grounding Sigil Tracer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Line-Locked Sigil Tracer</title>
   <style>
     html, body {
       margin: 0;
@@ -21,7 +22,7 @@
       max-height: 80vh;
       z-index: 0;
     }
-    #drawLayer {
+    #tracer {
       position: absolute;
       top: 0;
       left: 0;
@@ -31,66 +32,71 @@
   </style>
 </head>
 <body>
-  <!-- Static background sigil -->
-  <img id="sigil" src="https://systemsoverlords.github.io/sigil-tracer/grounding-sigil.png" crossorigin="anonymous" alt="Grounding Sigil" />  <!-- Canvas layer for drawing --><canvas id="drawLayer"></canvas>
+  <!-- Permanent background sigil -->
+  <img id="sigil" src="https://systemsoverlords.github.io/sigil-tracer/grounding-sigil.png" crossorigin="anonymous" alt="Sigil" />
+
+  <!-- Overlay for drawing -->
+  <canvas id="tracer"></canvas>
 
   <script>
-    const sigil = document.getElementById('sigil');
-    const canvas = document.getElementById('drawLayer');
+    const sigilImg = document.getElementById('sigil');
+    const canvas = document.getElementById('tracer');
     const ctx = canvas.getContext('2d');
 
-    const sampleCanvas = document.createElement('canvas');
-    const sampleCtx = sampleCanvas.getContext('2d');
-    let sigilData;
+    const sampler = document.createElement('canvas');
+    const sctx = sampler.getContext('2d');
 
-    let width, height;
+    let width, height, sigilData;
     function resize() {
-      width = canvas.width = sampleCanvas.width = window.innerWidth;
-      height = canvas.height = sampleCanvas.height = window.innerHeight;
+      width = canvas.width = sampler.width = window.innerWidth;
+      height = canvas.height = sampler.height = window.innerHeight;
     }
 
-    function drawSampleMap() {
-      const ratio = Math.min((width * 0.8) / sigil.naturalWidth, (height * 0.8) / sigil.naturalHeight);
-      const sw = sigil.naturalWidth * ratio;
-      const sh = sigil.naturalHeight * ratio;
+    function sampleSigil() {
+      const ratio = Math.min(
+        (width * 0.8) / sigilImg.naturalWidth,
+        (height * 0.8) / sigilImg.naturalHeight
+      );
+      const sw = sigilImg.naturalWidth * ratio;
+      const sh = sigilImg.naturalHeight * ratio;
       const sx = (width - sw) / 2;
       const sy = (height - sh) / 2;
 
-      sampleCtx.clearRect(0, 0, width, height);
-      sampleCtx.drawImage(sigil, sx, sy, sw, sh);
-      sigilData = sampleCtx.getImageData(0, 0, width, height).data;
+      sctx.clearRect(0, 0, width, height);
+      sctx.drawImage(sigilImg, sx, sy, sw, sh);
+      sigilData = sctx.getImageData(0, 0, width, height).data;
     }
 
     function isBlack(x, y) {
-      if (!sigilData) return false;
       const i = (Math.floor(y) * width + Math.floor(x)) * 4;
-      const r = sigilData[i], g = sigilData[i + 1], b = sigilData[i + 2];
+      const r = sigilData[i], g = sigilData[i+1], b = sigilData[i+2];
       return ((r + g + b) / 3) < 50;
     }
 
-    let drawing = false;
     let hue = 0;
+    let drawing = false;
 
-    function startDraw(e) {
+    function start(e) {
       drawing = true;
       draw(e);
     }
 
-    function endDraw() {
+    function stop() {
       drawing = false;
       ctx.beginPath();
     }
 
     function draw(e) {
-      if (!drawing) return;
+      if (!drawing || !sigilData) return;
       const x = e.touches ? e.touches[0].clientX : e.clientX;
       const y = e.touches ? e.touches[0].clientY : e.clientY;
 
       if (!isBlack(x, y)) return;
 
       ctx.strokeStyle = `hsl(${hue}, 100%, 60%)`;
-      ctx.lineWidth = 10;
+      ctx.lineWidth = 8;
       ctx.lineCap = 'round';
+
       ctx.lineTo(x, y);
       ctx.stroke();
       ctx.beginPath();
@@ -99,28 +105,29 @@
       hue = (hue + 1) % 360;
     }
 
-    function fadeTrail() {
+    function fade() {
       ctx.fillStyle = 'rgba(231, 228, 220, 0.1)';
       ctx.fillRect(0, 0, width, height);
-      requestAnimationFrame(fadeTrail);
+      requestAnimationFrame(fade);
     }
+
+    sigilImg.onload = () => {
+      resize();
+      sampleSigil();
+      fade();
+    };
 
     window.addEventListener('resize', () => {
       resize();
-      if (sigil.complete) drawSampleMap();
+      if (sigilImg.complete) sampleSigil();
     });
 
-    canvas.addEventListener('mousedown', startDraw);
-    canvas.addEventListener('touchstart', startDraw);
+    canvas.addEventListener('mousedown', start);
     canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stop);
+    canvas.addEventListener('touchstart', start);
     canvas.addEventListener('touchmove', draw);
-    canvas.addEventListener('mouseup', endDraw);
-    canvas.addEventListener('touchend', endDraw);
-
-    sigil.onload = () => {
-      resize();
-      drawSampleMap();
-      fadeTrail();
-    };
-  </script></body>
+    canvas.addEventListener('touchend', stop);
+  </script>
+</body>
 </html>
