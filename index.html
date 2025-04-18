@@ -1,1 +1,84 @@
+<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grounding Sigil Tracer</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #e7e4dc; /* stone background */
+      height: 100%;
+      overflow: hidden;
+      touch-action: none;
+    }
+    canvas {
+      display: block;
+      position: absolute;
+      top: 0; left: 0;
+    }
+    #sigil {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      max-width: 80vw;
+      max-height: 80vh;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <img id="sigil" src="https://systemsoverlords.github.io/sigil-tracer/grounding_sigil.png" alt="Grounding Sigil">
+  <canvas id="draw"></canvas>  <script>
+    const canvas = document.getElementById('draw');
+    const ctx = canvas.getContext('2d');
+    let width, height;
 
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+
+    resize();
+    window.addEventListener('resize', resize);
+
+    let drawing = false;
+    let hue = 0;
+
+    function start(e) {
+      drawing = true;
+      draw(e);
+    }
+
+    function end() {
+      drawing = false;
+      ctx.beginPath();
+    }
+
+    function draw(e) {
+      if (!drawing) return;
+
+      const x = e.touches ? e.touches[0].clientX : e.clientX;
+      const y = e.touches ? e.touches[0].clientY : e.clientY;
+
+      ctx.lineWidth = 10;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = `hsl(${hue}, 100%, 60%)`;
+
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+
+      hue = (hue + 1) % 360;
+    }
+
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('touchstart', start);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('touchmove', draw);
+    canvas.addEventListener('mouseup', end);
+    canvas.addEventListener('touchend', end);
+  </script></body>
+</html>
