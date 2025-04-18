@@ -121,11 +121,24 @@
     drawCanvas.addEventListener('touchend', endDraw);
 
     function fadeLoop() {
-      fadeCtx.fillStyle = 'rgba(231, 228, 220, 0.2)';
-      fadeCtx.fillRect(0, 0, width, height);
-      fadeCtx.drawImage(drawCanvas, 0, 0);
-      drawCtx.clearRect(0, 0, width, height);
-      requestAnimationFrame(fadeLoop);
+  // Redraw sigil image every frame to prevent it from fading
+  const ratio = Math.min(
+    (width * 0.8) / sigilImg.naturalWidth,
+    (height * 0.8) / sigilImg.naturalHeight
+  );
+  const sw = sigilImg.naturalWidth * ratio;
+  const sh = sigilImg.naturalHeight * ratio;
+  const sx = (width - sw) / 2;
+  const sy = (height - sh) / 2;
+
+  fadeCtx.clearRect(0, 0, width, height);
+  fadeCtx.drawImage(sigilImg, sx, sy, sw, sh); // always redraw base sigil
+  fadeCtx.fillStyle = 'rgba(231, 228, 220, 0.1)';
+  fadeCtx.fillRect(0, 0, width, height); // fade trail only
+  fadeCtx.drawImage(drawCanvas, 0, 0);
+  drawCtx.clearRect(0, 0, width, height);
+
+  requestAnimationFrame(fadeLoop);
     }
   </script>
 </body>
