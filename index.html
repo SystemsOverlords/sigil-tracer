@@ -1,8 +1,7 @@
-<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Grounding Sigil Tracer</title>
   <style>
     html, body {
@@ -13,70 +12,54 @@
       overflow: hidden;
       touch-action: none;
     }
-    canvas {
+    #sigil {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      max-width: 80vw;
+      max-height: 80vh;
+      z-index: 0;
+    }
+    #drawLayer {
       position: absolute;
       top: 0;
       left: 0;
+      z-index: 1;
+      pointer-events: none;
     }
-    #fadeLayer { z-index: 1; }
-    #drawLayer { z-index: 2; }
   </style>
 </head>
 <body>
-  <!-- Canvas for sigil and fading trails -->
-  <canvas id="fadeLayer"></canvas>
-  <!-- Canvas for active drawing -->
-  <canvas id="drawLayer"></canvas>
+  <!-- Static background sigil -->
+  <img id="sigil" src="https://systemsoverlords.github.io/sigil-tracer/grounding-sigil.png" crossorigin="anonymous" alt="Grounding Sigil" />  <!-- Canvas layer for drawing --><canvas id="drawLayer"></canvas>
 
   <script>
-    const fadeCanvas  = document.getElementById('fadeLayer');
-    const drawCanvas  = document.getElementById('drawLayer');
-    const fadeCtx     = fadeCanvas.getContext('2d');
-    const drawCtx     = drawCanvas.getContext('2d');
-
-    const sigilImg = new Image();
-    sigilImg.crossOrigin = 'anonymous';
-    sigilImg.src = 'https://systemsoverlords.github.io/sigil-tracer/grounding-sigil.png';
+    const sigil = document.getElementById('sigil');
+    const canvas = document.getElementById('drawLayer');
+    const ctx = canvas.getContext('2d');
 
     const sampleCanvas = document.createElement('canvas');
     const sampleCtx = sampleCanvas.getContext('2d');
+    let sigilData;
 
-    let width, height, sigilData;
-
+    let width, height;
     function resize() {
-      width = fadeCanvas.width = drawCanvas.width = window.innerWidth;
-      height = fadeCanvas.height = drawCanvas.height = window.innerHeight;
-      sampleCanvas.width = width;
-      sampleCanvas.height = height;
-      if (sigilImg.complete) drawSample();
+      width = canvas.width = sampleCanvas.width = window.innerWidth;
+      height = canvas.height = sampleCanvas.height = window.innerHeight;
     }
 
-    window.addEventListener('resize', resize);
-    resize();
-
-    function drawSample() {
-      sampleCtx.clearRect(0, 0, width, height);
-      fadeCtx.clearRect(0, 0, width, height);
-
-      const ratio = Math.min(
-        (width * 0.8) / sigilImg.naturalWidth,
-        (height * 0.8) / sigilImg.naturalHeight
-      );
-      const sw = sigilImg.naturalWidth * ratio;
-      const sh = sigilImg.naturalHeight * ratio;
+    function drawSampleMap() {
+      const ratio = Math.min((width * 0.8) / sigil.naturalWidth, (height * 0.8) / sigil.naturalHeight);
+      const sw = sigil.naturalWidth * ratio;
+      const sh = sigil.naturalHeight * ratio;
       const sx = (width - sw) / 2;
       const sy = (height - sh) / 2;
 
-      sampleCtx.drawImage(sigilImg, sx, sy, sw, sh);      // for pixel detection
-      fadeCtx.drawImage(sigilImg, sx, sy, sw, sh);        // for visible background
-
+      sampleCtx.clearRect(0, 0, width, height);
+      sampleCtx.drawImage(sigil, sx, sy, sw, sh);
       sigilData = sampleCtx.getImageData(0, 0, width, height).data;
     }
-
-    sigilImg.onload = () => {
-      drawSample();
-      requestAnimationFrame(fadeLoop);
-    };
 
     function isBlack(x, y) {
       if (!sigilData) return false;
@@ -85,7 +68,8 @@
       return ((r + g + b) / 3) < 50;
     }
 
-    let drawing = false, hue = 0;
+    let drawing = false;
+    let hue = 0;
 
     function startDraw(e) {
       drawing = true;
@@ -94,52 +78,49 @@
 
     function endDraw() {
       drawing = false;
-      drawCtx.beginPath();
+      ctx.beginPath();
     }
 
     function draw(e) {
       if (!drawing) return;
       const x = e.touches ? e.touches[0].clientX : e.clientX;
       const y = e.touches ? e.touches[0].clientY : e.clientY;
+
       if (!isBlack(x, y)) return;
 
-      drawCtx.strokeStyle = `hsl(${hue}, 100%, 60%)`;
-      drawCtx.lineWidth = 10;
-      drawCtx.lineCap = 'round';
-      drawCtx.lineTo(x, y);
-      drawCtx.stroke();
-      drawCtx.beginPath();
-      drawCtx.moveTo(x, y);
+      ctx.strokeStyle = `hsl(${hue}, 100%, 60%)`;
+      ctx.lineWidth = 10;
+      ctx.lineCap = 'round';
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+
       hue = (hue + 1) % 360;
     }
 
-    drawCanvas.addEventListener('mousedown', startDraw);
-    drawCanvas.addEventListener('touchstart', startDraw);
-    drawCanvas.addEventListener('mousemove', draw);
-    drawCanvas.addEventListener('touchmove', draw);
-    drawCanvas.addEventListener('mouseup', endDraw);
-    drawCanvas.addEventListener('touchend', endDraw);
-
-    function fadeLoop() {
-  // Redraw sigil image every frame to prevent it from fading
-  const ratio = Math.min(
-    (width * 0.8) / sigilImg.naturalWidth,
-    (height * 0.8) / sigilImg.naturalHeight
-  );
-  const sw = sigilImg.naturalWidth * ratio;
-  const sh = sigilImg.naturalHeight * ratio;
-  const sx = (width - sw) / 2;
-  const sy = (height - sh) / 2;
-
-  fadeCtx.clearRect(0, 0, width, height);
-  fadeCtx.drawImage(sigilImg, sx, sy, sw, sh); // always redraw base sigil
-  fadeCtx.fillStyle = 'rgba(231, 228, 220, 0.1)';
-  fadeCtx.fillRect(0, 0, width, height); // fade trail only
-  fadeCtx.drawImage(drawCanvas, 0, 0);
-  drawCtx.clearRect(0, 0, width, height);
-
-  requestAnimationFrame(fadeLoop);
+    function fadeTrail() {
+      ctx.fillStyle = 'rgba(231, 228, 220, 0.1)';
+      ctx.fillRect(0, 0, width, height);
+      requestAnimationFrame(fadeTrail);
     }
-  </script>
-</body>
+
+    window.addEventListener('resize', () => {
+      resize();
+      if (sigil.complete) drawSampleMap();
+    });
+
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('touchstart', startDraw);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('touchmove', draw);
+    canvas.addEventListener('mouseup', endDraw);
+    canvas.addEventListener('touchend', endDraw);
+
+    sigil.onload = () => {
+      resize();
+      drawSampleMap();
+      fadeTrail();
+    };
+  </script></body>
 </html>
